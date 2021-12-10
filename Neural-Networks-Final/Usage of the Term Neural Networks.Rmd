@@ -1,0 +1,666 @@
+---
+title: "Usage of term 'Neural Network' in Science 2010-2020"
+output: html_notebook
+---
+
+This is an R Notebook which describes the distant reading process used for my project. There are brief descriptors above each code chunk which describe what was done, with more detailed commentary in the coding sections which are noted with a "#" sign. Downloading the whole folder "Neural Network Usage in Science" and opening in Studio R will let you run this code on your own.
+
+Once the database was downloaded, according to the specification in the methodology section, I load all the databases from different years. I dropped the columns that weren't of interest and renamed those that were for easier use. Just incase of duplicates, I extracted the unique instances of rows. I discarded duplicate rows and columns that contained no information at all. I created a unique ID per article to make identifying specific articles easier to find if necessary. When data wasn’t available, Scopus used a text of “[x category is not available]” instead of just “NA”. To convert to NA sections, I filtered for rows that contained “available]” and copied the message precisely. That way I equated the message to an “NA” text for easier usage.
+
+```{r message=FALSE, warning=FALSE}
+#loading the necesary packages for this code
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(stringr)
+library(skimr)
+library(splitstackshape)
+library(janitor)
+library(jcolors)
+library(wordcloud)
+library(wordcloud2)
+library(tm)
+library(data.table)
+
+#loading the csv files and then joining them in to one data base
+  ##converting blanks in to NA
+
+#2010 data bases
+data.10.o <- read.csv ("2010_no_articles.csv", na.strings = c("", "NA"))
+data.10.a <- read.csv ("2010_yes_articles.csv", na.strings = c("", "NA"))
+
+#2011 data bases
+data.11.o <- read.csv ("2011_no_articles.csv", na.strings = c("", "NA"))
+data.11.a <- read.csv ("2011_yes_articles.csv", na.strings = c("", "NA"))
+
+#2012 databases
+data.12.o <- read.csv ("2012_no_articles.csv", na.strings = c("", "NA"))
+data.12.a <- read.csv ("2012_yes_articles.csv", na.strings = c("", "NA"))
+
+#2013 databases
+data.13.o <- read.csv ("2013_no_articles.csv", na.strings = c("", "NA"))
+data.13.a <- read.csv ("2013_articles.csv", na.strings = c("", "NA"))
+
+#2014 databases
+data.14.a <- read.csv ("2014_articles.csv", na.strings = c("", "NA"))
+data.14.o <- read.csv ("2014_other.csv", na.strings = c("", "NA"))
+
+#2015 databases
+data.15.a <- read.csv ("2015_articles.csv", na.strings = c("", "NA"))
+data.15.o <- read.csv ("2015_other.csv", na.strings = c("", "NA"))
+
+#2016 database
+  ## everything fit in one for 2016
+data.16.all <- read.csv ("2016_all.csv", na.strings = c("", "NA"))
+
+#2017 database
+  ## everything fir in one for 2017
+data.17.all <- read.csv ("2017_all.csv", na.strings = c("", "NA"))
+
+#2018 database
+data.18.a <- read.csv ("2018_articles.csv", na.strings = c("", "NA"))
+data.18.o <- read.csv ("2018_other.csv", na.strings = c("", "NA"))
+
+#2019 database
+data.19.a <- read.csv ("2019_articles.csv", na.strings = c("", "NA"))
+data.19.n <- read.csv ("2019_notes.csv", na.strings = c("", "NA"))
+data.19.o <- read.csv ("2019_other.csv", na.strings = c("", "NA"))
+
+#2020 database
+data.20.n <- read.csv ("2020_notes.csv", na.strings = c("", "NA"))
+data.20.o <- read.csv ("2020_other_articles.csv", na.strings = c("", "NA"))
+
+#putting the databases together into one
+data.original <- rbind(data.10.a, data.10.o,
+          data.11.a, data.11.o, 
+          data.12.a, data.12.o, 
+          data.13.a, data.13.a,
+          data.14.a, data.14.o,
+          data.15.a, data.15.o,
+          data.16.all,
+          data.17.all,
+          data.18.o, data.18.a,
+          data.19.a, data.19.n, data.19.o,
+          data.20.n, data.20.o)
+
+#cleaning the csv file
+  ## discarding some of the columns that won't be used
+  ## renaming the column titles so they're not capitalized
+  ## converting lack of information notes in to NA strings
+  ## adding an id to each column
+
+data.original <- data.original %>%
+ select(-Art..No., -Molecular.Sequence.Numbers, -Chemicals.CAS,-Tradenames, -Manufacturers, -Funding.Text.1, -Funding.Text.2, -Funding.Text.3, -Funding.Text.4, -Funding.Text.5, -Funding.Text.6, -Funding.Text.7, -Funding.Text.8, -Funding.Text.9, -Funding.Text.10, -Correspondence.Address,  -Abbreviated.Source.Title)
+
+#renaming the columns for easier handling
+names(data.original) <- c("authors", "author.id", "title", "year", "source.title", "volume", "issue", "page.start", "page.end", "page.count", "cited.by", "doi", "link", "affiliations", "author.affiliations", "abstract", "author.keywords", "index.keywords", "funding.details", "references", "editors", "sponsors", "publisher", "conference.name", "conference.date", "conference.location", "conference.code", "issn", "isbn", "coden", "pubmed.id", "original.language", "document.type", "publication.stage", "open.access", "source", "eid")
+
+#extracting the unique instances
+data.original <- unique(data.original)
+
+#checking how many NAs exist within each column
+colSums(is.na(data.original))
+
+#all columns (except isbn) are totally empty columns
+  #isbn has one 1 row with data
+data.original <- data.original %>%
+ select(-editors, -sponsors, -conference.name, -conference.date, -conference.location, -conference.code)
+
+#adding a unique id code for all of the columns
+data <- data.original %>%
+  mutate(id = row_number())
+
+#checking which columns use "[No x available]" format
+  ##to be able to copy that format and replace with NA instead
+
+data %>% filter(grepl("available]", authors))
+#[No author name available]
+
+data %>% filter(grepl("available]", author.id))
+#[No author id available]
+
+#none of these have inserted categories
+data %>% filter(grepl("available]", title))
+data %>% filter(grepl("available]", year))
+data %>% filter(grepl("available]", source.title))
+data %>% filter(grepl("available]", volume))
+data %>% filter(grepl("available]", issue))
+data %>% filter(grepl("available]", page.start))
+data %>% filter(grepl("available]", page.end))
+data %>% filter(grepl("available]", page.count))
+data %>% filter(grepl("available]", cited.by))
+data %>% filter(grepl("available]", doi))
+data %>% filter(grepl("available]", link))
+data %>% filter(grepl("available]", affiliations))
+data %>% filter(grepl("available]", author.affiliations))
+data %>% filter(grepl("available]", abstract))
+#[No abstract available]
+
+data %>% filter(grepl("available]", author.keywords))
+data %>% filter(grepl("available]", index.keywords))
+data %>% filter(grepl("available]", funding.details))
+data %>% filter(grepl("available]", references))
+data %>% filter(grepl("available]", publisher))
+data %>% filter(grepl("available]", issn))
+data %>% filter(grepl("available]", isbn))
+data %>% filter(grepl("available]", coden))
+data %>% filter(grepl("available]", pubmed.id))
+data %>% filter(grepl("available]", original.language))
+data %>% filter(grepl("available]", document.type))
+data %>% filter(grepl("available]", publication.stage))
+data %>% filter(grepl("available]", open.access))
+data %>% filter(grepl("available]", source))
+data %>% filter(grepl("available]", eid))
+
+#replacing text about missing data for NA instead in the columns that use text to indicate missing information
+data <- data %>%
+  mutate(authors = na_if(authors, "[No author name available]")) %>%
+  mutate(author.id = na_if(author.id, "[No author id available]")) %>%
+  mutate(abstract = na_if(abstract, "[No abstract available]"))
+```
+
+To obtain the visualizations about the information of all items in Science from 2010-2020, I calculated the following information: number of issues by year, how many items per volume, and number of items by issue.
+
+```{r}
+#calculating the number of items by issue
+number.volumes <- data %>% 
+  count(year)
+#renaming
+names(number.volumes) <- c("year", "n.items.by.year")
+
+#calculating the number of items by issue
+number.issues <- data %>% 
+  group_by(year) %>%
+  count(issue)
+#renaming
+names(number.issues) <- c("year", "issue", "n.items.by.issue")
+
+#exporting csv file for write up
+write.csv(number.issues, "Items_by_issue.csv")
+
+#calculating the number of issue by year
+number.issues.by.year <- data %>%
+  group_by(year) %>%
+  count(issue) %>%
+  select(year, issue) %>%
+  count(year)
+
+write.csv(number.issues.by.year, "Items_by_year.csv")
+
+#renaming the column to be representative of content, number of items
+names(number.issues.by.year) <- c("year", "n.of.issues")
+```
+
+The first graph represents the distribution of items published in science by year.
+```{r}
+#graph of the NUMBER OF issues BY YEAR of all science articles 2010-2020
+issues.by.year.bar <- ggplot(number.volumes)+
+  geom_line(aes(x= year, y = n.items.by.year), color = "#5F8495") +
+  scale_x_continuous(breaks = c(2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020)) +
+  xlab("Year") + 
+  ylab("Number of items") +
+  labs(title = "Fig 3. Distribution of amount of items published in science by year, 2010-2020") +
+  theme_classic()
+
+issues.by.year.bar
+```
+
+The second figure is a histogram of how many citations articles in Science received from 2010-2020, with a bin width of 30 units.
+```{r}
+#visualizing distribution of the citation counts for ALL articles in science
+#descriptive visualization
+  ## one: histogram of the citation, bins with 30 counts
+citation.hist.all <- ggplot(data, aes(x=cited.by)) +
+  geom_histogram(fill = "#5F8495", binwidth= 30, center = 0.1) +
+  xlab("Number of citations items recieved") + 
+  ylab("Number of items") +
+  labs(title = "Fig 1. Distribution of number of citations recieved by items 
+       published in Science, 2010-2020") +
+  theme(plot.title = element_text(size = 11))
+
+citation.hist.all + theme_classic()
+```
+
+Next, I calculated which issue starts each year. That way later I can add year categories to the figure about amount of items published by issue.
+```{r}
+#calculating the first issue number of each year to add labels to the later graph
+number.issues %>%
+  group_by(year) %>%
+  slice_head(n = 1)
+```
+
+Using the information gathered above I made a graph of number of items published by issue, noting where each year starts.
+```{r}
+#tracking the number of articles about neural networks through the issues in science
+issues.by.year.bar <- ggplot(number.issues) +
+  geom_line(aes(x= issue, y = n.items.by.issue), color = "#5F8495") +
+  scale_x_continuous(breaks = c(5900, 6000, 6100, 6200, 6300, 6400, 6500, 6600, 6700, 6800, 6900)) +
+  scale_y_continuous(breaks = c(0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150)) +
+  xlab("Issue number") + 
+  ylab("Number of items by issue") +
+  labs(title = "Fig 2. Distribution of number of items published in Science by issue, 2010-2020")
+
+issues.by.year.bar + theme_classic() +
+  #2010
+  ggplot2::annotate("segment", x = 5961, xend = 5961, y = 0, yend = 150, linetype = 2, colour = "#5F8495") +
+  ggplot2::annotate("text", x = 5961, y = 160, label = "2010", colour = "#5F8495") +
+  #2011
+  ggplot2::annotate("segment", x = 6013, xend = 6013, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6013, y = 160, label = "2011", color = "#99A799") +
+  #2012
+  ggplot2::annotate("segment", x = 6064, xend = 6064, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6064, y = 160, label = "2012", color = "#99A799") +
+  #2013
+  ggplot2::annotate("segment", x = 6115, xend = 6115, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6115, y = 160, label = "2013", color = "#99A799") +
+  #2014
+  ggplot2::annotate("segment", x = 6166, xend = 6166, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6166, y = 160, label = "2014", color = "#99A799") +
+  #2015
+  ggplot2::annotate("segment", x = 6217, xend = 6217, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6217, y = 160, label = "2015", color = "#99A799") +
+  #2016
+  ggplot2::annotate("segment", x = 6268, xend = 6268, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6268, y = 160, label = "2016", color = "#99A799") +
+  #2017
+  ggplot2::annotate("segment", x = 6320, xend = 6320, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6320, y = 160, label = "2017", color = "#99A799") +
+  #2018
+  ggplot2::annotate("segment", x = 6371, xend = 6371, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6371, y = 160, label = "2018", color = "#99A799") +
+  #2019
+  ggplot2::annotate("segment", x = 6422, xend = 6422, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6422, y = 160, label = "2019", color = "#99A799") +
+  #2020
+  ggplot2::annotate("segment", x = 6473, xend = 6473, y = 0, yend = 150, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6473, y = 160, label = "2020", color = "#99A799")
+  
+
+```
+
+The next figure is a pie chart of all items published, separated by having abstracts or not having abstracts.
+```{r}
+#checking how many articles are missing abstracts
+  #total articles missing abstracts = 13210
+data.no.abstract <- data %>%
+  filter(is.na(abstract)) %>% #filtering those rows in abstract that have NA
+  mutate(has.abstract = "No")
+
+data.yes.abstract <- data %>%
+  filter(!(id %in% data.no.abstract$id)) %>% #filtering out those articles already categorized as NA
+  mutate(has.abstract = "Yes")
+
+data.abstract.both <- rbind(data.no.abstract, data.yes.abstract)
+
+data.abstracts <- data.abstract.both %>%
+  group_by(has.abstract) %>%
+  count(has.abstract) %>%
+  ungroup() %>%
+  mutate(per = (100*n)/sum(n))
+
+data.abstracts$per <- round(data.abstracts$per)
+
+ggplot(data.abstracts, aes(x="", y = n, fill = has.abstract)) +
+  geom_col() +
+  theme_void() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank(),
+        panel.grid = element_blank()) +
+  coord_polar("y", start = 0) +
+  scale_fill_brewer(palette = "pal5") +
+  geom_text(aes(label = paste0(per,"%")), position = position_stack(vjust=0.5)) +
+  ggtitle("Fig 4. Percentage of documents with and without abstract information from Science 2010-2020") +
+  theme(plot.title = element_text(size = 10)) +
+  guides(fill = guide_legend(title = "Has Abstract"))
+```
+
+This is a distribution of items published in Science by type, stacked by whether they have abstracts or not.
+```{r}
+#stacked bar chart about whether different kinds of documents have abstracts or not
+
+all.abstract.types <- ggplot(data.abstract.both, aes(x = document.type, fill = has.abstract)) +
+  geom_bar() +
+  xlab("Kinds of documents") + 
+  ylab("Amount with or without abstract information") +
+  theme_classic() +
+  scale_fill_brewer(palette = "pal5") +
+  ggtitle("       Fig 5. Distribution of Science document types and wether they have abstracts") +
+  theme(plot.title = element_text(size = 12)) +
+  guides(fill = guide_legend(title = "Has Abstract"))
+
+#tilting the text so it is readable and moving downwards
+all.abstract.types + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+To find articles that I deemed to be related to “artificial neural networks” I researched the following keywords (making sure to disregard lower and upper case differences): Neural network, neural networks, artificial neural network, and artificial neural networks. These were chosen because “neural networks” is the MeSH descriptor (medical subject headings from the national library of medicine) and they are usually a standard for setting database keywords. "Artificial neural networks" is the category that seemed to pop up the most in the journal Science itself, the term that as a journal they seem to have agreed on, so I used that as well. I searched those keywords over the following categories: title, abstract, author keywords and index keywords and extracted the articles that did contain that information. I collected 72 articles in total.
+Also, I separated out columns so that each column had a distinct piece of information over the following categories: author id, author, affiliations, index keywords, references, and author keywords. That way later on I can work with those pieces separately.
+
+```{r}
+# identifying tiles, abstracts, author keywords and index keywords with my own keywords
+  ## keywords: Replication crisis, replication crisis, Replicability crisis, replicability crisis, Reproducibility crisis, reproducibility crisis
+
+data.title <- data %>%
+  filter(grepl("Neural network|Neural networks|artificial neural network|artificial neural networks", title, ignore.case = TRUE))
+
+data.abstract <- data %>%
+  filter(grepl("Neural network|Neural networks|artificial neural network|artificial neural networks", abstract, ignore.case = TRUE))
+
+data.author.keywords <- data %>%
+  filter(grepl("Neural network|Neural networks|artificial neural network|artificial neural networks", author.keywords, ignore.case = TRUE))
+
+data.index.keywords <- data %>%
+  filter(grepl("Neural network|Neural networks|artificial neural network|artificial neural networks", index.keywords, ignore.case = TRUE))
+
+#BINDING WITH THE EXTRA COLUMNS
+#putting all of the categories back together 
+data.networks <- do.call("rbind", list(data.title, data.abstract, data.author.keywords, data.index.keywords))
+
+#deleting any articles that might have replicated
+data.networks <- data.networks %>%
+  distinct(id, .keep_all = TRUE)
+
+#splitting author.id, 
+  ##in to separate columns using the splitstackshape library, which doesn't require you to know the total a column needs to be split in
+
+data.networks <- cSplit(data.networks, "author.id", sep=";")
+
+data.networks <-  cSplit(data.networks, "authors", sep=",")
+  
+data.networks <-  cSplit(data.networks, "affiliations", sep=";")
+
+data.networks <- cSplit(data.networks, "index.keywords", sep=";")
+  
+data.networks <- cSplit(data.networks, "references", sep=";")
+
+data.networks <- cSplit(data.networks, "author.keywords", sep=";")
+```
+
+
+The fist figure shows what year items relating to neural networks are published in Science from 2010-2020.
+```{r}
+#number of items by year 
+number.volumes.networks  <- data.networks %>%
+  count(year)
+
+#renaming
+names(number.volumes.networks) <- c("year", "n.items.by.year")
+
+#calculating the number of items by issue
+number.issues.networks <- data.networks %>% 
+  group_by(year) %>%
+  count(issue)
+#renaming
+names(number.issues.networks) <- c("year", "issue", "n.items.by.issue")
+
+#looking at the ARTICLE information by year
+issues.by.year.bar.networks <- ggplot(number.volumes.networks) +
+  geom_line(aes(x= year, y = n.items.by.year), color = "#5F8495") +
+  scale_x_continuous(breaks = c(2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020)) +
+ # scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)) +
+  xlab("Year") + 
+  ylab("Number of items") +
+  #labs(title = "") +
+  theme_classic()
+
+issues.by.year.bar.networks
+```
+
+The next figure visualizes the number of items published in Science relating to neural networks by issue, also indicated by year.
+```{r}
+#counting number of articles related to neural networks by issue (54)
+issues.of.networks <- data.networks %>%
+  group_by(issue) %>%
+  count(issue, .drop = FALSE)
+
+#getting a list of all issues (569)
+all.issues <- number.issues %>%
+  ungroup() %>%
+  select(-year, -n.items.by.issue) %>%
+  mutate(n = 0)
+
+#filtering out the issues that have neural network information in them  (515/512)
+number.issues.networks <- all.issues %>%
+  filter(!(issue %in% issues.of.networks$issue))
+
+#adding the databases above together (counted articles related to neural networks and the ones that don't, with 0 numbers)
+year.count <- rbind(number.issues.networks, issues.of.networks)
+
+issues.by.year.bar <- ggplot(year.count) +
+  geom_line(aes(x= issue, y = n), color = "#406343") +
+  scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5, 6)) +
+  scale_x_continuous(breaks = c(5900, 6000, 6100, 6200, 6300, 6400, 6500, 6600, 6700, 6800, 6900)) +
+  xlab("Issue number") + 
+  ylab("Number of items") +
+  ggtitle("Fig 6. Number of published items related to neural networks by issue in Science, 2010-2020") +
+  theme(plot.title = element_text(size = 12)) +
+  #20109
+  ggplot2::annotate("segment", x = 5961, xend = 5961, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 5961, y = 6, label = "2010", color = "#99A799") +
+  #2011
+  ggplot2::annotate("segment", x = 6013, xend = 6013, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6013, y = 6, label = "2011", color = "#99A799") +
+  #2012
+  ggplot2::annotate("segment", x = 6064, xend = 6064, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6064, y = 6, label = "2012", color = "#99A799") +
+  #2013
+  ggplot2::annotate("segment", x = 6115, xend = 6115, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6115, y = 6, label = "2013", color = "#99A799") +
+  #2014
+  ggplot2::annotate("segment", x = 6166, xend = 6166, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6166, y = 6, label = "2014", color = "#99A799") +
+  #2015
+  ggplot2::annotate("segment", x = 6217, xend = 6217, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6217, y = 6, label = "2015", color = "#99A799") +
+  #2016
+  ggplot2::annotate("segment", x = 6268, xend = 6268, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6268, y = 6, label = "2016", color = "#99A799") +
+  #2017
+  ggplot2::annotate("segment", x = 6320, xend = 6320, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6320, y = 6, label = "2017", color = "#99A799") +
+  #2018
+  ggplot2::annotate("segment", x = 6371, xend = 6371, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6371, y = 6, label = "2018", color = "#99A799") +
+  #2019
+  ggplot2::annotate("segment", x = 6422, xend = 6422, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6422, y = 6, label = "2019", color = "#99A799") +
+  #2020
+  ggplot2::annotate("segment", x = 6473, xend = 6473, y = 0, yend = 5.7, linetype = 2, color = "#99A799") +
+  ggplot2::annotate("text", x = 6473, y = 6, label = "2020", color = "#99A799")
+  
+issues.by.year.bar + theme_classic()
+```
+
+Next is a histogram of number of citations recieved by neural network items from Science 2010-2020.
+```{r}
+#descriptive visualization
+  ## one: histogram of the citation, bins with 30 counts
+citation.hist <- ggplot(data.networks, aes(x=cited.by)) +
+  geom_histogram(fill = "#406343", binwidth= 30, center = 0.1) +
+  scale_x_continuous(breaks = c(0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900)) +
+  xlab("Citation counts") + 
+  ylab("Number of articles") +
+  labs(title = "Fig 8. Distribution of amount of citations received by neural network items")
+
+citation.hist + theme_classic()
+```
+
+To view the histogram distribution more clearly, I also ran a version that excluded the outliers (which I categorizes as over 500 citations)
+```{r}
+#two: visualization of the citation counts excluding outliers (<500)
+  ## binwidth 10
+data.networks.citation.most <- data.networks %>%
+  filter(cited.by < 500)
+
+citation.hist.most <- ggplot(data.networks.citation.most, aes(x=cited.by)) +
+  geom_histogram(binwidth = 30, fill = "#406343") +
+   # scale_x_continuous(breaks = c(10, 50, 100, 150, 200, 250, 300, 350, 400, 
+    #                              450, 500, 550, 600, 650, 700, 750, 800)) +
+  xlab("Citation counts, without outliers") + 
+  ylab("Number of articles") +
+  labs(title = "Fig 9. Distribution of ammount of citations recieved by neural network items, excluding outliers (500)") +
+  theme(plot.title = element_text(size = 11))
+
+citation.hist.most + theme_classic()
+```
+
+The following pie chart categorizes what items have or do not have abstract information.
+```{r}
+#pie chart of the percentage of articles with no articles
+
+#checking how many articles are missing abstracts
+  #total articles missing abstracts = 13210
+data.nn.no.abstract <- data.networks %>%
+  filter(is.na(abstract)) %>% #filtering those rows in abstract that have NA
+  mutate(has.abstract = "No")
+
+data.nn.yes.abstract <- data.networks %>%
+  filter(!(id %in% data.nn.no.abstract$id)) %>% #filtering out those articles already categorized as NA
+  mutate(has.abstract = "Yes")
+
+data.nn.abstract.both <- rbind(data.nn.no.abstract, data.nn.yes.abstract)
+
+data.nn.abstracts <- data.nn.abstract.both %>%
+  group_by(has.abstract) %>%
+  count(has.abstract) %>%
+  ungroup() %>%
+  mutate(per = (100*n)/sum(n))
+
+data.nn.abstracts$per <- round(data.nn.abstracts$per)
+
+ggplot(data.nn.abstracts, aes(x="", y = has.abstract, fill = has.abstract, palette = "BuGn")) +
+   geom_col() +
+  theme_void() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank(),
+        panel.grid = element_blank()) +
+  coord_polar("y", start = 0) +
+  scale_fill_brewer(palette = "pal5") +
+  geom_text(aes(label = paste0(per,"%")), position = position_stack(vjust=0.5)) +
+  ggtitle("Fig 10. Percentages of items about neural networks 
+          with or without abstracts in Science 2010-2020") +
+  theme(plot.title = element_text(size = 12)) +
+  guides(fill = guide_legend(title = "Has Abstract"))
+```
+
+The next figure is a distribution of document types about neural networks and whether they have abstracts in Science 2010-2020.
+```{r}
+#checking by document type what things are missing abstracts
+nn.abstract.types <- ggplot(data.nn.abstract.both, aes(x = document.type, fill = has.abstract, palette = "BuGn")) +
+  geom_bar() +
+  xlab("Kinds of documents") + 
+  ylab("Amount with or without abstract information") +
+  theme_classic() +
+  scale_fill_brewer(palette = "BuGn") +
+  guides(fill = guide_legend(title = "Has Abstract")) +
+  ggtitle("Fig 11. Distribution of document types about neural networks and wether 
+          they have abstracts in Science 2010-2020") +
+  theme(plot.title = element_text(size = 12))
+
+#tilting the text so it is readable and moving downwards
+nn.abstract.types + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The next figure is a word cloud of the most common words in the abstract, including common words. 
+```{r}
+#making a long list of all the keywords used in articles about neural networks
+index.keywords <- data.networks %>%
+  select(index.keywords_01:index.keywords_66, id)
+
+index.keywords = melt(index.keywords,id.vars=c("id"))
+
+#making everything lowercase
+index.keywords$value = tolower(index.keywords$value)
+
+index.keywords <- index.keywords %>%
+  select(-id, -variable) %>%
+  drop_na(value) %>%
+  count(value)
+
+wordcloud(words = index.keywords$value, freq = index.keywords$n, min.freq = 5,
+          max.words=200, random.order=FALSE, rot.per=0.35,
+          colors=brewer.pal(8, "Dark2"), scale=c(2.0,0.25))
+```
+
+To more clearly see the words of interest, I excluded some of the words that are more common in the English language and therefore might be less indicative of what the abstracts are about. The keywords I excluded were: the, of, and, in, a, to, for, that, we, is, by, with, this, are, on, an, can, from, all, ©, be, which, how, or, our, it.
+```{r}
+#making wordcloud of the abstract information
+abstract.words <- data.networks %>%
+  select(id, abstract) %>%
+  drop_na(abstract)
+
+#taking away punctuation
+abstract.words$abstract <- gsub('[[:punct:] ]+',' ', as.character(abstract.words$abstract))
+  
+#making whole text lowercase
+abstract.words$abstract = tolower(abstract.words$abstract)
+
+#separating column out in to individual words
+abstract.words <- cSplit(abstract.words, "abstract", sep=" ")
+
+#trimming leading and trailing whitespace
+trimws_df <- function(x, ...){
+  x[] <- lapply(x, trimws, ...)
+  x
+}
+abstract.words <- trimws_df(abstract.words)
+
+#combining in to one column
+abstract.words = melt(abstract.words, id.vars=c("id"))
+
+#counting the number of words
+abstract.words <- abstract.words %>%
+  select(-id, -variable) %>%
+  drop_na(value) %>%
+  count(value)
+
+#making a word cloud including all the words
+wordcloud(words = abstract.words$value, freq = abstract.words$n, min.freq = 3,
+          max.words=200, random.order=FALSE, rot.per=0.35, scale=c(5.0,0.5),
+          colors=brewer.pal(8, "Dark2"))
+
+#removing common words
+abstract.words <- abstract.words[!grepl("the|of|and|in|a|to|for|that|we|is|by|with|this|are|on|an|can|from|all|©|be|which|how|or|our|it", abstract.words$value),]
+
+#making word cloud
+wordcloud(words = abstract.words$value, freq = abstract.words$n, min.freq = 3,
+         max.words=200, random.order=FALSE, rot.per=0.35,
+        colors=brewer.pal(8, "Dark2"), scale=c(3.0,0.25))
+```
+
+I selected 4 articles randomly to qualitatively code. Two were totally random and I got:
+	⁃	 Neural scene representation and rendering, 2018. Vol 360, issue 6394. doi: 10.1126/science.aar6170
+	⁃	The biochemical basis of microRNA targeting efficacy, 2019. Vol 366. doi: 10.1126/science.aav1741
+One was from the top 25% of citations received (more than 171.5 citations)
+	⁃	Terrestrial gross carbon dioxide uptake: Global distribution and covariation with climate. doi: 10.1126/science.1184984
+One was randomly selected from the year with the most articles about neural networks (2019)
+	⁃	Machine learning transforms how microstates are sampled, 2019. Vol 365. Issue 6457. doi: 10.1126/science.aay2568
+As a note, this will return different articles every time it is run. I've selected the articles that appeared the first time.
+```{r}
+#randomly selecting articles to close read
+  ##note, this will return different articles every time it is run. I've selected the articles that appeared the first time.
+
+#randomly selecting 2 articles from the whole networks database
+sample_n(data.networks, 2)
+  #selected: Neural scene representation and rendering, 2018. Vol 360, issue 6394. doi: 10.1126/science.aar6170
+  #selected: The biochemical basis of microRNA targeting efficacy, 2019. Vol 366. doi: 10.1126/science.aav1741
+
+#randomly selecting 1 article within the top 25% number of citations
+  ## extracting the quantiles of the dataset, upper 75% = 171.5
+quantile(data.networks$cited.by, na.rm=TRUE)
+
+data.networks.top.75per <- data.networks %>%
+  filter(cited.by > 171.5)
+
+sample_n(data.networks.top.75per,1)
+  #selected: Terrestrial gross carbon dioxide uptake: Global distribution and covariation with climate. doi: 10.1126/science.1184984
+
+#randomly selecting 1 article from 2019 (the year with the most articles published)
+data.networks.2019 <- data.networks %>%
+  filter(year == "2019")
+
+sample_n(data.networks.2019, 1)
+  #selected: Machine learning transforms how microstates are sampled, 2019. Vol 365. Issue 6457. doi: 10.1126/science.aay2568
+```
